@@ -39,7 +39,7 @@ def write(papers: list):
     papers = list({v["paperId"]: v for v in papers}.values())
 
     # write the papers to a json file
-    with open("papers.json", "w") as f:
+    with open("papers1.json", "w") as f:
         json.dump(papers, f, indent=4)
 
     return papers
