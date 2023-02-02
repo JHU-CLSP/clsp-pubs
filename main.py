@@ -25,12 +25,12 @@ def return_request(request_type: str, request_id: int, first_attempt: bool = Tru
     if response.status_code != 200:
         if first_attempt:
             print("Error in request, got status code {0}".format(response.status_code))
-            time.sleep(60 * 20)
+            time.sleep(60*5 + 30)
             return return_request(request_type, request_id, first_attempt=False)
         else:
             raise Exception(response)
 
-    time.sleep(0.1)
+    time.sleep(1)
     data = response.json()
     return data
 
