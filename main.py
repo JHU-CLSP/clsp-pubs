@@ -30,10 +30,19 @@ def return_request(request_type: str, request_id: int, first_attempt: bool = Tru
         else:
             raise Exception(response)
 
-    time.sleep(1)
+    time.sleep(2)
     data = response.json()
     return data
 
+def write(papers: list):
+    # eliminate duplicates
+    papers = list({v["paperId"]: v for v in papers}.values())
+
+    # write the papers to a json file
+    with open("papers.json", "w") as f:
+        json.dump(papers, f, indent=4)
+
+    return papers
 
 def extract_papers(file_path_authors: str):
     # read the json file
@@ -65,14 +74,7 @@ def extract_papers(file_path_authors: str):
             # 3 years locked
 
             papers.append(paper_details)
-
-    # eliminate duplicates
-    papers = list({v["paperId"]: v for v in papers}.values())
-
-    # write the papers to a json file
-    with open("papers.json", "w") as f:
-        json.dump(papers, f, indent=4)
-
+        write(papers)
 
 if __name__ == "__main__":
     extract_papers(file_path_authors="people.json")
