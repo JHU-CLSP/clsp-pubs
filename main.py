@@ -30,7 +30,7 @@ def return_request(request_type: str, request_id: int, first_attempt: bool = Tru
         else:
             raise Exception(response)
 
-    time.sleep(2)
+    time.sleep(0.7)
     data = response.json()
     return data
 
@@ -39,7 +39,7 @@ def write(papers: list):
     papers = list({v["paperId"]: v for v in papers}.values())
 
     # write the papers to a json file
-    with open("papers1.json", "w") as f:
+    with open("papers.json", "w") as f:
         json.dump(papers, f, indent=4)
 
     return papers
@@ -62,19 +62,22 @@ def extract_papers(file_path_authors: str):
         for paper_dict in papers_for_author["papers"]:
             # make sure we only count papers during their time here
 
+            print("paper_dict", paper_dict)
             # skip if the paper was published before the start year
             if start_year and "year" in paper_dict and paper_dict["year"] and start_year > paper_dict["year"]:
+                print("skipping paper because it was published before the start year")
                 continue
 
             # skip if the paper was published after the end year
             if end_year and "year" in paper_dict and paper_dict["year"] and end_year < paper_dict["year"]:
+                print("skipping paper because it was published after the end year")
                 continue
 
             paper_details = return_request("paper", paper_dict["paperId"])
             # 3 years locked
 
             papers.append(paper_details)
-        write(papers)
+        papers = write(papers)
 
 if __name__ == "__main__":
     extract_papers(file_path_authors="people.json")
