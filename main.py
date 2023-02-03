@@ -30,7 +30,7 @@ def return_request(request_type: str, request_id: int, first_attempt: bool = Tru
         else:
             raise Exception(response)
 
-    time.sleep(0.7)
+    time.sleep(1.1)
     data = response.json()
     return data
 
@@ -65,12 +65,12 @@ def extract_papers(file_path_authors: str):
             print("paper_dict", paper_dict)
             # skip if the paper was published before the start year
             if start_year and "year" in paper_dict and paper_dict["year"] and start_year > paper_dict["year"]:
-                print("skipping paper because it was published before the start year")
+                # print("skipping paper because it was published before the start year")
                 continue
 
             # skip if the paper was published after the end year
             if end_year and "year" in paper_dict and paper_dict["year"] and end_year < paper_dict["year"]:
-                print("skipping paper because it was published after the end year")
+                # print("skipping paper because it was published after the end year")
                 continue
 
             paper_details = return_request("paper", paper_dict["paperId"])
