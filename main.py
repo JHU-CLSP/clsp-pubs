@@ -48,7 +48,7 @@ def write(papers: list):
 def update_cache(cache_path: str):
 
     # CLSP faculty
-    file_path_authors = "authors.json"
+    file_path_authors = "people.json"
     with open(file_path_authors, "r") as f:
         authors = json.load(f)
 
@@ -103,6 +103,16 @@ pub_template = \
 }}
 """
 
+def get_year(cache_dict):
+    if cache_dict["year"] is not None:
+        year = cache_dict["year"]
+    elif cache_dict["publicationDate"] is not None:
+        date = datetime.datetime.strptime(cache_dict["publicationDate"], "%Y-%m-%d")
+        year = date.year
+    else:
+        year = None
+    return year
+
 def convert_to_bib(cache_path: str):
     all_pubs = []
     # read json file
@@ -111,6 +121,12 @@ def convert_to_bib(cache_path: str):
 
     # drop duplicates from cache
     cache = list({v["paperId"]: v for v in cache}.values())
+
+    # strip the ones with no year
+    cache = [item for item in cache if get_year(item) is not None]
+
+    # sort by year
+    cache = sorted(cache, key=lambda x: get_year(x), reverse=True)
 
     for cache_dict in cache:
         title = cache_dict["title"]
@@ -121,7 +137,8 @@ def convert_to_bib(cache_path: str):
 
         url = cache_dict["url"]
 
-        year = cache_dict["year"]
+        year = get_year(cache_dict)
+
         if cache_dict["publicationDate"] is not None:
             date = datetime.datetime.strptime(cache_dict["publicationDate"], "%Y-%m-%d")
             month = date.month
@@ -130,16 +147,6 @@ def convert_to_bib(cache_path: str):
 
         author_list = "{" + " and ".join(["{" + item["name"] + "}" for item in cache_dict["authors"]]) + "}"
         ident = cache_dict["externalIds"]["CorpusId"]
-
-
-        # allow easy access to correct a bibtex, should it be wrong
-        # if cache_key in corrections_dict:  # rely on semantic scholar paper id
-        #     updated_cache = corrections_dict[cache_key]
-        #     title, author_list, year, journal, publicationDate = updated_cache["title"], updated_cache["author_list"], \
-        #     updated_cache["year"], updated_cache["journal"], updated_cache["publicationDate"]
-        #     if publicationDate is not None:
-        #         date = datetime.datetime.strptime(cache_dict["publicationDate"], "%Y-%m-%d")
-        #         month = date.month
 
         cur_pub = pub_template.format(title=title,
                                       author_list=author_list,
