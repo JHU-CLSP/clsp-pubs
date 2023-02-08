@@ -69,9 +69,8 @@ def update_cache(cache_path: str):
         # get the papers for the author
         papers_for_author = return_request("author", s2id)
         for paper_dict in papers_for_author["papers"]:
-            # make sure we only count papers during their time here
+            # make sure we only count papers during the time their authors are here
 
-            print("paper_dict", paper_dict)
             # skip if the paper was published before the start year
             if start_year and "year" in paper_dict and paper_dict["year"] and start_year > paper_dict["year"]:
                 # print("skipping paper because it was published before the start year")
