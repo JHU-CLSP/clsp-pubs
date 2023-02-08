@@ -34,12 +34,12 @@ def return_request(request_type: str, request_id: int, first_attempt: bool = Tru
     data = response.json()
     return data
 
-def write(papers: list):
+def write(papers: list, cache_path: str):
     # eliminate duplicates
     papers = list({v["paperId"]: v for v in papers}.values())
 
     # write the papers to a json file
-    with open("papers.json", "w") as f:
+    with open(cache_path, "w") as f:
         json.dump(papers, f, indent=4)
 
     return papers
@@ -90,7 +90,7 @@ def update_cache(cache_path: str):
                 paper_details = return_request("paper", paper_dict["paperId"])
 
             papers.append(paper_details)
-        papers = write(papers)
+        papers = write(papers, cache_path)
 
 pub_template = \
 """
