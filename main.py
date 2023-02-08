@@ -1,8 +1,8 @@
+import argparse
 import requests
-import os
+import datetime
 import json
 import time
-from datetime import date
 import tqdm
 
 PAPER_DETAILS_URL = "https://api.semanticscholar.org/graph/v1/paper/REPLACE_ME?fields=title,venue,year,publicationDate,publicationTypes,authors,journal,url,externalIds"
@@ -44,13 +44,22 @@ def write(papers: list):
 
     return papers
 
-def extract_papers(file_path_authors: str):
-    # read the json file
 
+def update_cache(cache_path: str):
+
+    # CLSP faculty
+    file_path_authors = "authors.json"
     with open(file_path_authors, "r") as f:
         authors = json.load(f)
 
-    papers = []
+    # check if there is a file in the cache
+    try:
+        with open(cache_path, "r") as f:
+            papers = json.load(f)
+            paper_ids = [paper["paperId"] for paper in papers]
+    except FileNotFoundError:
+        papers = []
+        paper_ids = {}
 
     for author_name, author_info in tqdm.tqdm(authors.items()):
         s2id = author_info["s2id"]
@@ -73,11 +82,86 @@ def extract_papers(file_path_authors: str):
                 # print("skipping paper because it was published after the end year")
                 continue
 
-            paper_details = return_request("paper", paper_dict["paperId"])
-            # 3 years locked
+            # skip if we already have the paper
+            if paper_dict["paperId"] in paper_ids:
+                # print("skipping paper because we already have it")
+                continue
+            else:
+                paper_details = return_request("paper", paper_dict["paperId"])
 
             papers.append(paper_details)
         papers = write(papers)
 
+pub_template = \
+"""
+@inproceedings{{%s,
+    title = {{{title}}},
+    author = {author_list},
+    year = {year},{month}
+    booktitle = {{{journal}}}, 
+    url = {{{url}}},
+}}
+"""
+
+def convert_to_bib(cache_path: str):
+    all_pubs = []
+    # read json file
+    with open(cache_path, "r") as f:
+        cache = json.load(f)
+
+    # drop duplicates from cache
+    cache = list({v["paperId"]: v for v in cache}.values())
+
+    for cache_dict in cache:
+        title = cache_dict["title"]
+        journal = cache_dict["venue"]
+        if journal == "" and cache_dict["journal"] is not None and "name" in cache_dict["journal"]:  # maybe a journal
+            journal = cache_dict["journal"]["name"]
+            # print(journal)
+
+        url = cache_dict["url"]
+
+        year = cache_dict["year"]
+        if cache_dict["publicationDate"] is not None:
+            date = datetime.datetime.strptime(cache_dict["publicationDate"], "%Y-%m-%d")
+            month = date.month
+        else:
+            month = None
+
+        author_list = "{" + " and ".join(["{" + item["name"] + "}" for item in cache_dict["authors"]]) + "}"
+        ident = cache_dict["externalIds"]["CorpusId"]
+
+
+        # allow easy access to correct a bibtex, should it be wrong
+        # if cache_key in corrections_dict:  # rely on semantic scholar paper id
+        #     updated_cache = corrections_dict[cache_key]
+        #     title, author_list, year, journal, publicationDate = updated_cache["title"], updated_cache["author_list"], \
+        #     updated_cache["year"], updated_cache["journal"], updated_cache["publicationDate"]
+        #     if publicationDate is not None:
+        #         date = datetime.datetime.strptime(cache_dict["publicationDate"], "%Y-%m-%d")
+        #         month = date.month
+
+        cur_pub = pub_template.format(title=title,
+                                      author_list=author_list,
+                                      year=year,
+                                      month="\n\tmonth = {%s}," % month if month is not None else "",
+                                      journal=journal,
+                                      url=url) % ident
+        all_pubs.append(cur_pub)
+
+    with open("references_generated.bib", "w") as fout:
+        fout.write("".join(all_pubs))
+
+
 if __name__ == "__main__":
-    extract_papers(file_path_authors="people.json")
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-c', '--cache', help='path to the paper cache jsonl file in order to update', type=str, default=None)
+    parser.add_argument('-b', '--to_bib', help='path to the paper cache jsonl file in order to convert to bib file', type=str, default=None)
+    args = parser.parse_args()
+
+    if args.cache:
+        update_cache(cache_path=args.cache)
+    elif args.to_bib:
+        convert_to_bib(cache_path=args.to_bib)
+    else:
+        raise Exception("Must provide either a cache path or a bib path")
