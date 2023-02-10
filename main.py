@@ -45,21 +45,35 @@ def write(papers: list, cache_path: str):
     return papers
 
 
-def update_cache(cache_path: str):
-
+def pull_existing_bibfiles():
+    bibfile = [
+        "https://www.cs.jhu.edu/~jason/papers/bibtex.bib"
+    ]
+    bibs = ""
+    for url in bibfile:
+        # download the bibfile if it exists
+        response = requests.get(url)
+        if response.status_code == 200:
+            bibs += response.text
+        else:
+            print("Could not find bibfile at {0}".format(url))
+    return bibs
+def update_cache(cache_path: str, use_existing_cache: bool = False):
     # CLSP faculty
     file_path_authors = "people.json"
     with open(file_path_authors, "r") as f:
         authors = json.load(f)
 
     # check if there is a file in the cache
-    try:
-        with open(cache_path, "r") as f:
-            papers = json.load(f)
-            paper_ids = [paper["paperId"] for paper in papers]
-    except FileNotFoundError:
-        papers = []
-        paper_ids = {}
+    papers = []
+    paper_ids = {}
+    if use_existing_cache:
+        try:
+            with open(cache_path, "r") as f:
+                papers = json.load(f)
+                paper_ids = [paper["paperId"] for paper in papers]
+        except FileNotFoundError:
+            print("No cache file found, creating new one")
 
     for author_name, author_info in tqdm.tqdm(authors.items()):
         s2id = author_info["s2id"]
@@ -157,6 +171,11 @@ def convert_to_bib(cache_path: str):
 
     with open("references_generated.bib", "w") as fout:
         fout.write("".join(all_pubs))
+
+    # append the existing bib files
+    bibs = pull_existing_bibfiles()
+    with open("references_generated.bib", "a") as fout:
+        fout.write(bibs)
 
 
 if __name__ == "__main__":
