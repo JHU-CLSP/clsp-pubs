@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+from pathlib import Path
 import requests
 import datetime
 import logging
@@ -13,28 +14,29 @@ AUTHOR_DETAILS_URL = "https://api.semanticscholar.org/graph/v1/author/{}?fields=
 ANTHOLOGY_TEMPLATE = "https://aclanthology.org/{}.bib"
 
 
-def return_request(request_type: str, request_id: int, first_attempt: bool = True) -> dict:
-    print(f"Making request type {request_type} with id {request_id}, first_attempt={first_attempt}")
+def return_request(url: str) -> dict:
+    """Returns the json response from the given url"""
 
-    if request_id is None:
-        raise Exception("Request id for {request_type} is None".format(request_type=request_type))
+    attempt_no = 1
+    sleep_time = 1
+    while attempt_no < 10:
+        response = requests.get(url)
 
-    request_id = str(request_id)
-
-    if request_type == "paper":
-        response = requests.get(PAPER_DETAILS_URL.format(request_id))
-    elif request_type == "author":
-        response = requests.get(AUTHOR_DETAILS_URL.format(request_id))
-
-    if response.status_code != 200:
-        if first_attempt:
-            print("Error in request, got status code {0}".format(response.status_code))
-            time.sleep(10)
-            return return_request(request_type, request_id, first_attempt=False)
+        if response.status_code == 200:
+            break
+        elif response.status_code == 429:
+            sleep_time = 2 ** attempt_no
+            print(f"-> Got status code {response.status_code}, retrying in {sleep_time} seconds")
+            time.sleep(sleep_time)
         else:
-            raise Exception(response)
+            print(f"-> Got status code {response.status_code}, retrying in {sleep_time} seconds")
+            time.sleep(0.5)
 
-    time.sleep(1.1)
+        attempt_no += 1
+    else:
+        raise Exception("Could not get a response from the server after {attempt_no} attempts")
+
+    time.sleep(0.5)
     data = response.json()
     return data
 
@@ -65,7 +67,7 @@ def pull_existing_bibfiles():
     return bibs
 
 
-def update_cache(cache_path: str, use_existing_cache: bool = False):
+def update_cache(cache_path: str):
     # CLSP faculty
     file_path_authors = "people.json"
     with open(file_path_authors, "r") as f:
@@ -74,13 +76,11 @@ def update_cache(cache_path: str, use_existing_cache: bool = False):
     # check if there is a file in the cache
     papers = []
     paper_ids = {}
-    if use_existing_cache:
-        try:
-            with open(cache_path, "r") as f:
-                papers = json.load(f)
-                paper_ids = [paper["paperId"] for paper in papers]
-        except FileNotFoundError:
-            print("No cache file found, creating new one")
+    if Path(cache_path).exists():
+        print(f"Loading papers from cache {cache_path}...")
+        with open(cache_path, "r") as f:
+            papers = json.load(f)
+            paper_ids = { paper["paperId"]: paper for paper in papers }
 
     for author_name, author_info in tqdm.tqdm(authors.items()):
         s2id = author_info["s2id"]
@@ -88,8 +88,12 @@ def update_cache(cache_path: str, use_existing_cache: bool = False):
         end_year = author_info["end_year"]
 
         # get the papers for the author
-        papers_for_author = return_request("author", s2id)
+        print(f"Processing {author_name} ({author_info})")
+        papers_for_author = return_request(AUTHOR_DETAILS_URL.format(s2id))
+        print(f"-> found {len(papers_for_author['papers'])} papers for {author_name}")
         for paper_dict in papers_for_author["papers"]:
+            paper_id = paper_dict["paperId"]
+
             # make sure we only count papers during the time their authors are here
 
             # skip if the paper was published before the start year
@@ -103,14 +107,24 @@ def update_cache(cache_path: str, use_existing_cache: bool = False):
                 continue
 
             # skip if we already have the paper
-            if paper_dict["paperId"] in paper_ids:
-                # print("skipping paper because we already have it")
-                continue
+            paper = None
+            if paper_id in paper_ids:
+                paper = paper_ids[paper_id]
 
-            paper_details = return_request("paper", paper_dict["paperId"])
+            if paper is None or "bibtex" not in paper:
+                if paper is None:
+                    print(f"-> processing new paper {paper_id}")
+                elif "bibtex" not in paper:
+                    print(f"-> completing bibtex for paper {paper_id}")
 
-            papers.append(paper_details)
+                paper = return_request(PAPER_DETAILS_URL.format(paper_dict["paperId"]))
 
+                # cache the bibtex entry since it might also require a network request
+                paper["bibtex"] = get_bibtex(paper)
+
+                papers.append(paper)
+
+        # save the cache after each author
         papers = write(papers, cache_path)
 
 
@@ -206,7 +220,7 @@ def convert_to_bib(cache_path: str):
     cache = sorted(cache, key=lambda x: get_year(x), reverse=True)
 
     for cache_dict in cache:
-        cur_pub = get_bibtex(cache_dict)
+        cur_pub = cache_dict["bibtex"]
         all_pubs.append(cur_pub)
 
     with open("references_generated.bib", "w") as fout:
