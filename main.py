@@ -88,7 +88,7 @@ def update_cache(cache_path: str):
         end_year = author_info["end_year"]
 
         # get the papers for the author
-        print(f"Processing {author_name} ({author_info})")
+        print(f"Processing {author_name} (id={s2id}, {start_year or ''}-{end_year or ''})")
         papers_for_author = return_request(AUTHOR_DETAILS_URL.format(s2id))
         print(f"-> found {len(papers_for_author['papers'])} papers for {author_name}")
         for paper_dict in papers_for_author["papers"]:
@@ -205,31 +205,28 @@ def convert_to_bib(cache_path: str):
 
     :param cache_path: path to the papers.json file    
     """
-    all_pubs = []
     # read json file
     with open(cache_path, "r") as f:
         cache = json.load(f)
 
-    # drop duplicates from cache
-    cache = list({v["paperId"]: v for v in cache}.values())
+        # drop duplicates from cache
+        cache = list({v["paperId"]: v for v in cache}.values())
 
-    # strip the ones with no year
-    cache = [item for item in cache if get_year(item) is not None]
+        # strip the ones with no year
+        cache = [item for item in cache if get_year(item) is not None]
 
-    # sort by year
-    cache = sorted(cache, key=lambda x: get_year(x), reverse=True)
+        # sort by year
+        cache = sorted(cache, key=lambda x: get_year(x), reverse=True)
 
-    for cache_dict in cache:
-        cur_pub = cache_dict["bibtex"]
-        all_pubs.append(cur_pub)
+        all_pubs = [item["bibtex"] for item in cache]
 
-    with open("references_generated.bib", "w") as fout:
-        fout.write("".join(all_pubs))
+        with open("references_generated.bib", "w") as fout:
+            fout.write("".join(all_pubs))
 
-    # append the existing bib files
-    bibs = pull_existing_bibfiles()
-    with open("references_generated.bib", "a") as fout:
-        fout.write(bibs)
+        # append the existing bib files
+        bibs = pull_existing_bibfiles()
+        with open("references_generated.bib", "a") as fout:
+            fout.write(bibs)
 
 
 if __name__ == "__main__":
