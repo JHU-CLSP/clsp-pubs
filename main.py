@@ -14,7 +14,6 @@ BibTeX is taken from S2, but if there is an Anthology ID identifier, we query th
 and get their bibtex, instead.
 """
 
-
 import argparse
 import requests
 import datetime
@@ -22,12 +21,12 @@ import logging
 import json
 import time
 import tqdm
+import os
 
 from pathlib import Path
 from collections import OrderedDict
 
 logging.basicConfig(level=logging.INFO)
-
 
 PAPER_DETAILS_URL = "https://api.semanticscholar.org/graph/v1/paper/{}?fields=title,venue,year,publicationDate,publicationTypes,authors,journal,url,externalIds"
 AUTHOR_DETAILS_URL = "https://api.semanticscholar.org/graph/v1/author/{}?fields=papers,papers.year"
@@ -198,15 +197,15 @@ def get_year(cache_dict):
 
 
 PUB_TEMPLATE = \
-"""
-@inproceedings{{%s,
-    title = {{{title}}},
-    author = {author_list},
-    year = {year},{month}
-    booktitle = {{{journal}}}, 
-    url = {{{url}}},
-}}
-"""
+    """
+    @inproceedings{{%s,
+        title = {{{title}}},
+        author = {author_list},
+        year = {year},{month}
+        booktitle = {{{journal}}}, 
+        url = {{{url}}},
+    }}
+    """
 
 
 def get_bibtex(cache_dict):
@@ -219,7 +218,7 @@ def get_bibtex(cache_dict):
     journal = cache_dict["venue"]
     if journal == "" and cache_dict["journal"] is not None and "name" in cache_dict["journal"]:  # maybe a journal
         journal = cache_dict["journal"]["name"]
-            # print(journal)
+        # print(journal)
 
     url = cache_dict["url"]
 
@@ -236,11 +235,11 @@ def get_bibtex(cache_dict):
 
     cur_pub = None
     if "ACL" in cache_dict["externalIds"]:
-            # Use the Anthology BibTeX if this is a *ACL paper
+        # Use the Anthology BibTeX if this is a *ACL paper
         anthology_id = cache_dict["externalIds"]["ACL"]
         url = ANTHOLOGY_TEMPLATE.format(anthology_id)
 
-            # download the file
+        # download the file
         logging.info(f"-> swapping in Anthology BibTex for {url}")
         response = requests.get(url)
         if response.status_code == 200:
@@ -250,12 +249,12 @@ def get_bibtex(cache_dict):
         # generate this if the Anthology call failed or there was
         # no Anthology ID
         cur_pub = PUB_TEMPLATE.format(title=title,
-                                          author_list=author_list,
-                                          year=year,
-                                          month="\n\tmonth = {%s}," % month if month is not None else "",
-                                          journal=journal,
-                                          url=url) % ident
-                                      
+                                      author_list=author_list,
+                                      year=year,
+                                      month="\n\tmonth = {%s}," % month if month is not None else "",
+                                      journal=journal,
+                                      url=url) % ident
+
     return cur_pub
 
 
@@ -290,11 +289,18 @@ def convert_to_bib(cache_path: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--cache', help='path to the paper cache jsonl file in order to update', type=str, default=None)
-    parser.add_argument('-b', '--to_bib', help='path to the paper cache jsonl file in order to convert to bib file', type=str, default=None)
+    parser.add_argument('-r', '--reset', help='whether to reset the cache', action='store_true')
+    parser.add_argument('-c', '--cache', help='path to the paper cache jsonl file in order to update',
+                        type=str, default=None)
+    parser.add_argument('-b', '--to_bib', help='path to the paper cache jsonl file in order to convert to bib file',
+                        type=str, default=None)
     args = parser.parse_args()
 
     if args.cache:
+        if args.reset:
+            # replace `args.cache` file with an empty file
+            with open(args.cache, "w") as f:
+                pass
         update_cache(cache_path=args.cache)
     elif args.to_bib:
         convert_to_bib(cache_path=args.to_bib)
