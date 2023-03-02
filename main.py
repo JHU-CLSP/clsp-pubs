@@ -297,10 +297,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.cache:
-        if args.reset:
-            # replace `args.cache` file with an empty file
-            with open(args.cache, "w") as f:
-                pass
+        if args.reset and os.path.exists(args.cache):
+            os.remove(args.cache)
+
         update_cache(cache_path=args.cache)
     elif args.to_bib:
         convert_to_bib(cache_path=args.to_bib)
