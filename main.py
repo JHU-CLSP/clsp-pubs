@@ -1,7 +1,21 @@
 #!/usr/bin/env python3
 
+"""
+This script provides two functions:
+
+* Update papers cache (--cache path/to/cache.json). This will query S2 for all authors
+  listed in people.json, and then query S2 for all papers for each author. Results are
+  written to the cache file. If the cache file already exists, it will be loaded first,
+* Update the bibfile (--bibfile path/to/bibfile.bib). This will read the cache file and
+  produce a bibfile containing all papers in the cache. BibTeX is read from a "bibtex"
+  field in the cache file.
+
+BibTeX is taken from S2, but if there is an Anthology ID identifier, we query the Anthology
+and get their bibtex, instead.
+"""
+
+
 import argparse
-from pathlib import Path
 import requests
 import datetime
 import logging
@@ -9,13 +23,23 @@ import json
 import time
 import tqdm
 
+from pathlib import Path
+from collections import OrderedDict
+
+logging.basicConfig(level=logging.INFO)
+
+
 PAPER_DETAILS_URL = "https://api.semanticscholar.org/graph/v1/paper/{}?fields=title,venue,year,publicationDate,publicationTypes,authors,journal,url,externalIds"
 AUTHOR_DETAILS_URL = "https://api.semanticscholar.org/graph/v1/author/{}?fields=papers,papers.year"
 ANTHOLOGY_TEMPLATE = "https://aclanthology.org/{}.bib"
 
 
 def return_request(url: str) -> dict:
-    """Returns the json response from the given url"""
+    """Returns the json response from the given url.
+    
+    :param url: The URL to query
+    :return: The JSON response
+    """
 
     attempt_no = 1
     sleep_time = 1
@@ -41,9 +65,14 @@ def return_request(url: str) -> dict:
     return data
 
 
-def write(papers: list, cache_path: str):
-    # eliminate duplicates
-    papers = list({v["paperId"]: v for v in papers}.values())
+def write(paper_cache: OrderedDict, cache_path: str):
+    """Write papers to the JSON disk cache.
+
+    :param papers: The list of papers.
+    :param cache_path: The path to the file containing the cache.
+    :return: The papers, with duplicates removed.
+    """
+    papers = [paper for paper in paper_cache.values()]
 
     # write the papers to a json file
     with open(cache_path, "w") as f:
@@ -68,19 +97,32 @@ def pull_existing_bibfiles():
 
 
 def update_cache(cache_path: str):
+    """
+    Main function. Writes crawled database to {cache_path}. If
+    the cache path exists, it will be loaded first, and then updated.
+    """
+
     # CLSP faculty
     file_path_authors = "people.json"
     with open(file_path_authors, "r") as f:
         authors = json.load(f)
 
-    # check if there is a file in the cache
-    papers = []
-    paper_ids = {}
+    # The list of papers. These will be read from the cache (if existent),
+    # updated, and then written to disk
+    paper_cache = OrderedDict()
+
+    # Papers that have been seen. We use this to remove papers found in the
+    # cache that were not found among the papers for any CLSP authors
+    seen_papers = set()
+
+    # load the cache if present
     if Path(cache_path).exists():
         print(f"Loading papers from cache {cache_path}...")
         with open(cache_path, "r") as f:
-            papers = json.load(f)
-            paper_ids = { paper["paperId"]: paper for paper in papers }
+            json_data = json.load(f)
+            for paper_dict in json_data:
+                paper_id = paper_dict["paperId"]
+                paper_cache[paper_id] = paper_dict
 
     for author_name, author_info in tqdm.tqdm(authors.items()):
         s2id = author_info["s2id"]
@@ -88,56 +130,61 @@ def update_cache(cache_path: str):
         end_year = author_info["end_year"]
 
         # get the papers for the author
-        print(f"Processing {author_name} (id={s2id}, {start_year or ''}-{end_year or ''})")
+        logging.info(f"Processing {author_name} (id={s2id}, {start_year or ''}-{end_year or ''})")
         papers_for_author = return_request(AUTHOR_DETAILS_URL.format(s2id))
-        print(f"-> found {len(papers_for_author['papers'])} papers for {author_name}")
+        logging.info(f"-> found {len(papers_for_author['papers'])} papers for {author_name}")
         for paper_dict in papers_for_author["papers"]:
             paper_id = paper_dict["paperId"]
 
-            # make sure we only count papers during the time their authors are here
-
-            # skip if the paper was published before the start year
+            # Make sure we only count papers during the time their authors are here.
+            # - skip if the paper was published before the start year
             if start_year and "year" in paper_dict and paper_dict["year"] and start_year > paper_dict["year"]:
                 # print("skipping paper because it was published before the start year")
                 continue
 
-            # skip if the paper was published after the end year
+            # - skip if the paper was published after the end year
             if end_year and "year" in paper_dict and paper_dict["year"] and end_year < paper_dict["year"]:
                 # print("skipping paper because it was published after the end year")
                 continue
 
-            # skip if we already have the paper
-            paper = None
-            if paper_id in paper_ids:
-                paper = paper_ids[paper_id]
+            # mark the paper as seen
+            seen_papers.add(paper_id)
 
-            if paper is None or "bibtex" not in paper:
-                if paper is None:
-                    print(f"-> processing new paper {paper_id}")
-                elif "bibtex" not in paper:
-                    print(f"-> completing bibtex for paper {paper_id}")
+            # fetch the paper object from the cache...
+            paper_dict = None
+            if paper_id in paper_cache:
+                paper_dict = paper_cache[paper_id]
 
-                paper = return_request(PAPER_DETAILS_URL.format(paper_dict["paperId"]))
+            else:
+                # ...or get its details from S2
+                logging.info(f"-> processing new paper {paper_id}")
+
+                paper_dict = return_request(PAPER_DETAILS_URL.format(paper_id))
+
+                paper_cache[paper_id] = paper_dict
+
+            # Create thte bibtex entry if it doesn't exist
+            if "bibtex" not in paper_dict:
+                logging.info(f"-> completing bibtex for paper {paper_id}")
 
                 # cache the bibtex entry since it might also require a network request
-                paper["bibtex"] = get_bibtex(paper)
+                paper_dict["bibtex"] = get_bibtex(paper_dict)
 
-                papers.append(paper)
+        # Save the cache after each author. It will get updated again outside the loop
+        # removing papers that were not found for any author
+        write(paper_cache, cache_path)
 
-        # save the cache after each author
-        papers = write(papers, cache_path)
+    # Remove papers no longer associated with an author
+    paper_ids = list(paper_cache.keys())
+    for paper_id in paper_ids:
+        if paper_id not in seen_papers:
+            title = paper_cache[paper_id]["title"]
+            logging.info(f"Removing paper {paper_id} from cache ({title})")
+            paper_cache.pop(paper_id)
 
+    # and write to disk
+    write(paper_cache, cache_path)
 
-pub_template = \
-"""
-@inproceedings{{%s,
-    title = {{{title}}},
-    author = {author_list},
-    year = {year},{month}
-    booktitle = {{{journal}}}, 
-    url = {{{url}}},
-}}
-"""
 
 def get_year(cache_dict):
     if cache_dict["year"] is not None:
@@ -148,6 +195,18 @@ def get_year(cache_dict):
     else:
         year = None
     return year
+
+
+PUB_TEMPLATE = \
+"""
+@inproceedings{{%s,
+    title = {{{title}}},
+    author = {author_list},
+    year = {year},{month}
+    booktitle = {{{journal}}}, 
+    url = {{{url}}},
+}}
+"""
 
 
 def get_bibtex(cache_dict):
@@ -182,7 +241,7 @@ def get_bibtex(cache_dict):
         url = ANTHOLOGY_TEMPLATE.format(anthology_id)
 
             # download the file
-        logging.info(f"-> Swapping in Anthology BibTex for {url}")
+        logging.info(f"-> swapping in Anthology BibTex for {url}")
         response = requests.get(url)
         if response.status_code == 200:
             cur_pub = response.text
@@ -190,7 +249,7 @@ def get_bibtex(cache_dict):
     if cur_pub is None:
         # generate this if the Anthology call failed or there was
         # no Anthology ID
-        cur_pub = pub_template.format(title=title,
+        cur_pub = PUB_TEMPLATE.format(title=title,
                                           author_list=author_list,
                                           year=year,
                                           month="\n\tmonth = {%s}," % month if month is not None else "",
@@ -218,15 +277,15 @@ def convert_to_bib(cache_path: str):
         # sort by year
         cache = sorted(cache, key=lambda x: get_year(x), reverse=True)
 
-        all_pubs = [item["bibtex"] for item in cache]
-
         with open("references_generated.bib", "w") as fout:
-            fout.write("".join(all_pubs))
+            for paper_dict in cache:
+                bib = paper_dict["bibtex"]
+                print(bib.rstrip(), file=fout)
 
-        # append the existing bib files
+        # append pre-existing bib files
         bibs = pull_existing_bibfiles()
         with open("references_generated.bib", "a") as fout:
-            fout.write(bibs)
+            print(bibs, file=fout)
 
 
 if __name__ == "__main__":
