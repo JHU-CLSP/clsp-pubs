@@ -42,7 +42,7 @@ def return_request(url: str) -> dict:
 
     attempt_no = 1
     sleep_time = 1
-    while attempt_no < 10:
+    while attempt_no < 100:
         response = requests.get(url)
 
         if response.status_code == 200:
