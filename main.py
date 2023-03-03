@@ -33,12 +33,23 @@ AUTHOR_DETAILS_URL = "https://api.semanticscholar.org/graph/v1/author/{}?fields=
 ANTHOLOGY_TEMPLATE = "https://aclanthology.org/{}.bib"
 
 
+<<<<<<< Updated upstream
 def return_request(url: str) -> dict:
     """Returns the json response from the given url.
     
     :param url: The URL to query
     :return: The JSON response
     """
+=======
+<<<<<<< Updated upstream
+def return_request(request_type: str, request_id: int, first_attempt: bool = True) -> dict:
+    print(f"Making request type {request_type} with id {request_id}, first_attempt={first_attempt}")
+=======
+PAPER_DETAILS_URL = "https://api.semanticscholar.org/graph/v1/paper/{}?fields=title,venue,year,publicationDate,publicationTypes,authors,journal,url,externalIds"
+AUTHOR_DETAILS_URL = "https://api.semanticscholar.org/graph/v1/author/{}?fields=papers,papers.year"
+ANTHOLOGY_TEMPLATE = "https://aclanthology.org/{}"
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
 
     attempt_no = 1
     sleep_time = 1
@@ -158,6 +169,13 @@ def update_cache(cache_path: str):
                 # ...or get its details from S2
                 logging.info(f"-> processing new paper {paper_id}")
 
+<<<<<<< Updated upstream
+=======
+<<<<<<< Updated upstream
+            papers.append(paper_details)
+        papers = write(papers, cache_path)
+=======
+>>>>>>> Stashed changes
                 paper_dict = return_request(PAPER_DETAILS_URL.format(paper_id))
 
                 paper_cache[paper_id] = paper_dict
@@ -169,6 +187,14 @@ def update_cache(cache_path: str):
                 # cache the bibtex entry since it might also require a network request
                 paper_dict["bibtex"] = get_bibtex(paper_dict)
 
+<<<<<<< Updated upstream
+=======
+            if "ACL" in paper_dict["externalIds"]:
+                # Use the Anthology BibTeX if this is a *ACL paper
+                anthology_id = paper_dict["externalIds"]["ACL"]
+                paper_dict["url"] = ANTHOLOGY_TEMPLATE.format(anthology_id)
+
+>>>>>>> Stashed changes
         # Save the cache after each author. It will get updated again outside the loop
         # removing papers that were not found for any author
         write(paper_cache, cache_path)
@@ -183,6 +209,10 @@ def update_cache(cache_path: str):
 
     # and write to disk
     write(paper_cache, cache_path)
+<<<<<<< Updated upstream
+=======
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
 
 
 def get_year(cache_dict):
@@ -195,6 +225,85 @@ def get_year(cache_dict):
         year = None
     return year
 
+<<<<<<< Updated upstream
+=======
+<<<<<<< Updated upstream
+def convert_to_bib(cache_path: str):
+    all_pubs = []
+=======
+
+PUB_TEMPLATE = \
+"""
+@inproceedings{{%s,
+    title = {{{title}}},
+    author = {author_list},
+    year = {year},{month}
+    booktitle = {{{journal}}}, 
+    url = {{{url}}},
+}}
+"""
+
+
+def get_bibtex(cache_dict):
+    """Generates or retrieves the bibtex entry for the paper
+
+    :param cache_dict: A dictionary of paper metadata obtained from S2.
+    :return: The BibTeX text.
+    """
+    title = cache_dict["title"]
+    journal = cache_dict["venue"]
+    if journal == "" and cache_dict["journal"] is not None and "name" in cache_dict["journal"]:  # maybe a journal
+        journal = cache_dict["journal"]["name"]
+            # print(journal)
+
+    url = cache_dict["url"]
+
+    year = get_year(cache_dict)
+
+    if cache_dict["publicationDate"] is not None:
+        date = datetime.datetime.strptime(cache_dict["publicationDate"], "%Y-%m-%d")
+        month = date.month
+    else:
+        month = None
+
+    author_list = "{" + " and ".join(["{" + item["name"] + "}" for item in cache_dict["authors"]]) + "}"
+    ident = cache_dict["externalIds"]["CorpusId"]
+
+    cur_pub = None
+    if "ACL" in cache_dict["externalIds"]:
+            # Use the Anthology BibTeX if this is a *ACL paper
+        anthology_id = cache_dict["externalIds"]["ACL"]
+        url = ANTHOLOGY_TEMPLATE.format(anthology_id) + ".bib"
+
+            # download the file
+        logging.info(f"-> swapping in Anthology BibTex for {url}")
+        response = requests.get(url)
+        if response.status_code == 200:
+            cur_pub = response.text
+
+    if cur_pub is None:
+        # generate this if the Anthology call failed or there was
+        # no Anthology ID
+        cur_pub = PUB_TEMPLATE.format(title=title,
+                                          author_list=author_list,
+                                          year=year,
+                                          month="\n\tmonth = {%s}," % month if month is not None else "",
+                                          journal=journal,
+                                          url=url) % ident
+
+    return cur_pub, url
+
+
+def convert_to_bib(cache_path: str):
+    """Converts the papers.json file to a bibtex file
+
+    :param cache_path: path to the papers.json file
+    """
+>>>>>>> Stashed changes
+    # read json file
+    with open(cache_path, "r") as f:
+        cache = json.load(f)
+>>>>>>> Stashed changes
 
 PUB_TEMPLATE = \
     """
