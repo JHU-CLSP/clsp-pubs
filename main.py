@@ -210,7 +210,7 @@ PUB_TEMPLATE = \
     title = {{{title}}},
     author = {author_list},
     year = {year},{month}
-    booktitle = {{{journal}}}, 
+    booktitle = {{{journal}}},
     url = {{{url}}},
 }}
 """
@@ -263,7 +263,7 @@ def get_bibtex(cache_dict):
                                           journal=journal,
                                           url=url) % ident
 
-    return cur_pub, url
+    return cur_pub
 
 
 def convert_to_bib(cache_path: str):
@@ -287,7 +287,9 @@ def convert_to_bib(cache_path: str):
         with open("references_generated.bib", "w") as fout:
             for paper_dict in cache:
                 bib = paper_dict["bibtex"]
-                print(bib.rstrip(), file=fout)
+                if type(bib) is list:
+                    print(bib)
+                print(bib, file=fout)
 
         # append pre-existing bib files
         bibs = pull_existing_bibfiles()
