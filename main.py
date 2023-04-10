@@ -22,6 +22,7 @@ import json
 import time
 import tqdm
 import os
+import random
 
 from pathlib import Path
 from collections import OrderedDict
@@ -280,6 +281,9 @@ def convert_to_bib(cache_path: str):
 
         # strip the ones with no year
         cache = [item for item in cache if get_year(item) is not None]
+
+        # randoize them
+        random.shuffle(cache)
 
         # sort by year
         cache = sorted(cache, key=lambda x: get_year(x), reverse=True)
